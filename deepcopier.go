@@ -184,6 +184,7 @@ func process(dst interface{}, src interface{}, args ...Options) error {
 				dstFieldValue.Set(indirect.Convert(dstFieldType.Type))
 				continue
 			}
+      
 			if indirect.Type().AssignableTo(dstFieldType.Type) {
 				dstFieldValue.Set(indirect)
 				continue
