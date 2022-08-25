@@ -180,7 +180,7 @@ func process(dst interface{}, src interface{}, args ...Options) error {
 		if srcFieldType.Type.Kind() == reflect.Ptr && !srcFieldValue.IsNil() && dstFieldType.Type.Kind() != reflect.Ptr {
 			indirect := reflect.Indirect(srcFieldValue)
 
-			if indirect.Kind() == dstFieldValue.Kind() {
+			if indirect.Kind() == dstFieldValue.Kind() && (dstFieldValue.Kind() != reflect.Slice && dstFieldValue.Kind() != reflect.Struct && dstFieldValue.Kind() != reflect.Map) { // this works only for basic types
 				dstFieldValue.Set(indirect.Convert(dstFieldType.Type))
 				continue
 			}
