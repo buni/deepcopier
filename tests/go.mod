@@ -6,7 +6,7 @@ require (
 	github.com/guregu/null v4.0.0+incompatible
 	github.com/lib/pq v1.4.0
 	github.com/satori/go.uuid v1.2.0
-	github.com/stretchr/testify v1.5.1
+	github.com/stretchr/testify v1.8.0
 	github.com/ulule/deepcopier v0.0.0
 )
 
