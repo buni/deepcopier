@@ -2,6 +2,7 @@ package deepcopier
 
 import (
 	"database/sql/driver"
+	"errors"
 	"fmt"
 	"reflect"
 	"strings"
@@ -12,6 +13,8 @@ const (
 	TagName = "deepcopier"
 	// FieldOptionName is the from field option name for struct tag.
 	FieldOptionName = "field"
+	// ValueOptionName value function/field to be used for the source
+	ValueOptionName = "value"
 	// ContextOptionName is the context option name for struct tag.
 	ContextOptionName = "context"
 	// SkipOptionName is the skip option name for struct tag.
@@ -119,11 +122,40 @@ func process(dst interface{}, src interface{}, args ...Options) error {
 			continue
 		}
 
+		srcType := srcFieldType.Type
+
 		// Force option for empty interfaces and nullable types
 		_, force := tagOptions[ForceOptionName]
+		srcOpts := getTagOptions(srcFieldType.Tag.Get(TagName))
+		if v, ok := srcOpts[ValueOptionName]; ok && v != "" {
+
+			field, fieldFound := srcValue.Type().FieldByName(f)
+			if !fieldFound {
+				return errors.New("field not found")
+			}
+
+			_, ok := srcFieldType.Type.FieldByName(v) // only first level fields are checked
+			if ok {
+				srcFieldValue = srcValue.FieldByName(f).FieldByName(v)
+				srcType = srcFieldValue.Type()
+			} else {
+				_, ok = field.Type.MethodByName(v)
+				if !ok {
+					return errors.New("field method not found")
+				}
+
+				values := srcValue.FieldByName(f).MethodByName(v).Call([]reflect.Value{})
+				if len(values) == 0 {
+					return errors.New("func returned zero values")
+				}
+
+				srcFieldValue = values[0]
+				srcType = values[0].Type()
+			}
+		}
 
 		// Valuer -> ptr
-		if isNullableType(srcFieldType.Type) && dstFieldValue.Kind() == reflect.Ptr && force {
+		if isNullableType(srcType) && dstFieldValue.Kind() == reflect.Ptr && force {
 			// We have same nullable type on both sides
 			if srcFieldValue.Type().AssignableTo(dstFieldType.Type) {
 				dstFieldValue.Set(srcFieldValue)
@@ -148,7 +180,7 @@ func process(dst interface{}, src interface{}, args ...Options) error {
 		}
 
 		// Valuer -> value
-		if isNullableType(srcFieldType.Type) {
+		if isNullableType(srcType) {
 			// We have same nullable type on both sides
 			if srcFieldValue.Type().AssignableTo(dstFieldType.Type) {
 				dstFieldValue.Set(srcFieldValue)
@@ -177,22 +209,34 @@ func process(dst interface{}, src interface{}, args ...Options) error {
 			continue
 		}
 
-		if srcFieldType.Type.Kind() == reflect.Ptr && !srcFieldValue.IsNil() && dstFieldType.Type.Kind() != reflect.Ptr {
+		if srcType.Kind() == reflect.Ptr && !srcFieldValue.IsNil() && dstFieldType.Type.Kind() != reflect.Ptr {
 			indirect := reflect.Indirect(srcFieldValue)
 
 			if indirect.Kind() == dstFieldValue.Kind() && (dstFieldValue.Kind() != reflect.Slice && dstFieldValue.Kind() != reflect.Struct && dstFieldValue.Kind() != reflect.Map) { // this works only for basic types
 				dstFieldValue.Set(indirect.Convert(dstFieldType.Type))
 				continue
 			}
-      
+
 			if indirect.Type().AssignableTo(dstFieldType.Type) {
 				dstFieldValue.Set(indirect)
 				continue
 			}
 		}
 
+		if dstFieldType.Type.Kind() == reflect.Ptr && srcType.Kind() != reflect.Ptr {
+			indirect := reflect.Indirect(dstFieldValue)
+
+			value := reflect.New(dstFieldValue.Type().Elem())
+			value.Elem().Set(srcFieldValue)
+
+			if indirect.Type().AssignableTo(srcType) {
+				dstFieldValue.Set(value)
+				continue
+			}
+		}
+
 		// Other types
-		if srcFieldType.Type.AssignableTo(dstFieldType.Type) {
+		if srcType.AssignableTo(dstFieldType.Type) {
 			dstFieldValue.Set(srcFieldValue)
 		}
 		if srcFieldValue.Kind() == dstFieldValue.Kind() {
